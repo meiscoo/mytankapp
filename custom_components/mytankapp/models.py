@@ -170,6 +170,7 @@ class MyTankAppConsumption:
     """Persisted cumulative propane consumption for one tank."""
 
     total_kwh: float = 0.0
+    total_liters: float = 0.0
     last_inventory: float | None = None
     last_reported: datetime | None = None
     flow_rate_per_hour: float | None = None
@@ -203,6 +204,7 @@ class MyTankAppConsumption:
             consumed = previous - current
             gallons = consumed / LITERS_PER_GALLON if uses_liters else consumed
             self.total_kwh += gallons * PROPANE_KWH_PER_GALLON
+            self.total_liters += gallons * LITERS_PER_GALLON
             self.last_inventory = current
         # Ignore small increases as gauge/temperature noise. Keeping the lower
         # baseline prevents that noise from being counted again on the next dip.
@@ -243,6 +245,7 @@ class MyTankAppConsumption:
         """Serialize state for Home Assistant storage."""
         return {
             "total_kwh": self.total_kwh,
+            "total_liters": self.total_liters,
             "last_inventory": self.last_inventory,
             "last_reported": (
                 self.last_reported.isoformat() if self.last_reported else None
@@ -258,8 +261,16 @@ class MyTankAppConsumption:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MyTankAppConsumption:
         """Restore state from Home Assistant storage."""
+        total_kwh = _float(data.get("total_kwh")) or 0.0
+        total_liters = _float(data.get("total_liters"))
+        if total_liters is None:
+            # Preserve cumulative usage recorded before the volume sensor existed.
+            total_liters = (
+                total_kwh / PROPANE_KWH_PER_GALLON * LITERS_PER_GALLON
+            )
         return cls(
-            total_kwh=_float(data.get("total_kwh")) or 0.0,
+            total_kwh=total_kwh,
+            total_liters=total_liters,
             last_inventory=_float(data.get("last_inventory")),
             last_reported=_datetime(data.get("last_reported")),
             flow_rate_per_hour=_float(data.get("flow_rate_per_hour")),

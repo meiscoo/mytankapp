@@ -143,6 +143,15 @@ CONSUMPTION_DESCRIPTION = SensorEntityDescription(
     suggested_display_precision=2,
 )
 
+GAS_CONSUMPTION_DESCRIPTION = SensorEntityDescription(
+    key="propane_consumed",
+    translation_key="propane_consumed",
+    device_class=SensorDeviceClass.GAS,
+    native_unit_of_measurement=UnitOfVolume.LITERS,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    suggested_display_precision=2,
+)
+
 FLOW_RATE_DESCRIPTION = SensorEntityDescription(
     key="propane_flow_rate",
     translation_key="propane_flow_rate",
@@ -180,6 +189,11 @@ async def async_setup_entry(
         ]
         entities.extend(
             MyTankAppEnergyConsumedSensor(entry, device_id)
+            for device_id in new_device_ids
+            if coordinator.data[device_id].is_propane
+        )
+        entities.extend(
+            MyTankAppGasConsumedSensor(entry, device_id)
             for device_id in new_device_ids
             if coordinator.data[device_id].is_propane
         )
@@ -260,6 +274,23 @@ class MyTankAppEnergyConsumedSensor(MyTankAppEntity, SensorEntity):
         if consumption is None:
             return None
         return round(consumption.total_kwh, 3)
+
+
+class MyTankAppGasConsumedSensor(MyTankAppEntity, SensorEntity):
+    """Cumulative propane volume consumed for the Energy Dashboard gas chart."""
+
+    entity_description = GAS_CONSUMPTION_DESCRIPTION
+
+    def __init__(self, entry: MyTankAppConfigEntry, device_id: str) -> None:
+        super().__init__(entry, device_id, self.entity_description.key)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return cumulative consumed propane volume in liters."""
+        consumption = self.coordinator.consumption.get(self._device_id)
+        if consumption is None:
+            return None
+        return round(consumption.total_liters, 3)
 
 
 class MyTankAppLastSuccessfulSyncSensor(MyTankAppEntity, SensorEntity):

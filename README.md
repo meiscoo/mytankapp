@@ -15,11 +15,12 @@ Each tank becomes a Home Assistant device with sensors for:
 - Temperature and base temperature
 - Estimated days to 30%, 15%, and empty
 - Cumulative propane energy consumed in kWh for the Energy Dashboard
+- Cumulative propane volume consumed in liters for the Energy Dashboard gas chart
 - Configurable low-level problem state
 
 The estimates match the website's basic calculation and are unavailable when usage is zero, negative, or the tank is already below the target.
 
-The cumulative energy sensor begins at zero after upgrading to version 0.2.0. It counts decreases in reported inventory, ignores deliveries, filters small upward gauge fluctuations, and persists across Home Assistant restarts. Add it under **Settings → Dashboards → Energy → Gas consumption**. Existing tank history is not backfilled.
+The cumulative consumption sensors count decreases in reported inventory, ignore deliveries, filter small upward gauge fluctuations, and persist across Home Assistant restarts. Add **Propane consumed** under **Settings → Dashboards → Energy → Gas consumption** for the gas chart. Keep **Propane energy consumed** on summary views where a kWh equivalent is useful. Existing tank history is not backfilled, but upgrades preserve the consumption accumulated by earlier versions.
 
 ## Installation
 
