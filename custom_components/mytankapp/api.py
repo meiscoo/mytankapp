@@ -6,12 +6,16 @@ import asyncio
 from collections.abc import Mapping
 from datetime import datetime
 import json
+from time import monotonic
 from typing import Any
 
 from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
 
-from .const import BASE_URL
+from .const import BASE_URL, LOGIN_RETRY_INTERVAL
 from .models import MyTankAppAccount, MyTankAppReading, MyTankAppTank
+
+
+_LOGIN_RETRY_AFTER: dict[str, float] = {}
 
 
 class MyTankAppError(Exception):
@@ -40,31 +44,58 @@ class MyTankAppClient:
         password: str,
         *,
         base_url: str = BASE_URL,
+        retry_failed_login: bool = True,
     ) -> None:
         self._session = session
         self._username = username.strip()
         self._password = password
         self._base_url = base_url.rstrip("/")
+        self._retry_failed_login = retry_failed_login
         self._authorization: str | None = None
+        self._authentication_failed = False
         self._login_lock = asyncio.Lock()
 
     async def async_login(self) -> None:
         """Authenticate and retain the returned opaque authorization value."""
+        if self._authentication_failed:
+            raise MyTankAppAuthError("Authentication previously failed")
         async with self._login_lock:
-            offset = datetime.now().astimezone().utcoffset()
-            offset_hours = 0 if offset is None else offset.total_seconds() / 3600
-            payload = {
-                "UserName": self._username,
-                "Password": self._password,
-                "TimeZoneOffset": offset_hours,
-            }
+            if self._authentication_failed:
+                raise MyTankAppAuthError("Authentication previously failed")
+            await self._async_login_locked()
+
+    async def _async_login_locked(self) -> None:
+        """Log in while holding the login lock."""
+        retry_after = _LOGIN_RETRY_AFTER.get(self._username.casefold(), 0)
+        if retry_after > monotonic():
+            raise MyTankAppConnectionError(
+                "Login is cooling down after a temporary failure"
+            )
+        offset = datetime.now().astimezone().utcoffset()
+        offset_hours = 0 if offset is None else offset.total_seconds() / 3600
+        payload = {
+            "UserName": self._username,
+            "Password": self._password,
+            "TimeZoneOffset": offset_hours,
+        }
+        try:
             response = await self._request(
                 "POST", "/api/user/login", json_body=payload, authenticated=False
             )
             token = await self._decode_token(response)
             if not token:
                 raise MyTankAppAuthError("Login returned no authorization value")
-            self._authorization = token
+        except MyTankAppAuthError:
+            self._authorization = None
+            self._authentication_failed = True
+            raise
+        except MyTankAppConnectionError:
+            _LOGIN_RETRY_AFTER[self._username.casefold()] = (
+                monotonic() + LOGIN_RETRY_INTERVAL * 60
+            )
+            raise
+        _LOGIN_RETRY_AFTER.pop(self._username.casefold(), None)
+        self._authorization = token
 
     async def async_get_account(self) -> MyTankAppAccount:
         """Fetch the user/dealer metadata required for normalization."""
@@ -121,24 +152,45 @@ class MyTankAppClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
-        retry_auth: bool = True,
+        allow_session_renewal: bool = True,
     ) -> Any:
+        if self._authentication_failed:
+            raise MyTankAppAuthError("Authentication previously failed")
         if self._authorization is None:
             await self.async_login()
+        request_authorization = self._authorization
         response = await self._request(
             method, path, params=params, authenticated=True
         )
-        if response.status in (401, 403) and retry_auth:
-            self._authorization = None
-            response.release()
-            await self.async_login()
-            return await self._request_json(
-                method, path, params=params, retry_auth=False
-            )
         if response.status in (401, 403):
             response.release()
-            raise MyTankAppAuthError("Authorization was rejected")
+            if not allow_session_renewal:
+                self._authorization = None
+                if self._retry_failed_login:
+                    self._start_login_cooldown()
+                    raise MyTankAppConnectionError(
+                        "Login was rejected; waiting before retry"
+                    )
+                self._authentication_failed = True
+                raise MyTankAppAuthError("Authorization was rejected")
+            await self._async_renew_session(request_authorization)
+            return await self._request_json(
+                method, path, params=params, allow_session_renewal=False
+            )
         return await self._decode_json(response)
+
+    async def _async_renew_session(self, failed_authorization: str | None) -> None:
+        """Renew an expired session once, coalescing concurrent failures."""
+        async with self._login_lock:
+            if self._authentication_failed:
+                raise MyTankAppAuthError("Authentication previously failed")
+            if (
+                self._authorization is not None
+                and self._authorization != failed_authorization
+            ):
+                return
+            self._authorization = None
+            await self._async_login_locked()
 
     async def _request(
         self,
@@ -166,14 +218,24 @@ class MyTankAppClient:
 
         if response.status in (400, 401, 403) and not authenticated:
             response.release()
+            if self._retry_failed_login:
+                raise MyTankAppConnectionError(
+                    "Login was rejected; waiting before retry"
+                )
             raise MyTankAppAuthError("Invalid username or password")
         if response.status >= 400 and response.status not in (401, 403):
             status = response.status
             response.release()
-            if status in (502, 503, 504):
+            if status in (408, 429, 500, 502, 503, 504):
                 raise MyTankAppConnectionError(f"MyTankApp returned HTTP {status}")
             raise MyTankAppResponseError(f"MyTankApp returned HTTP {status}")
         return response
+
+    def _start_login_cooldown(self) -> None:
+        """Prevent another automatic login request during the cooldown."""
+        _LOGIN_RETRY_AFTER[self._username.casefold()] = (
+            monotonic() + LOGIN_RETRY_INTERVAL * 60
+        )
 
     async def _decode_json(self, response: ClientResponse) -> Any:
         try:

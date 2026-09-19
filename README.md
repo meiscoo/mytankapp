@@ -11,11 +11,15 @@ Each tank becomes a Home Assistant device with sensors for:
 - Capacity
 - Average daily usage
 - Last report time
+- Last successful integration sync time
 - Temperature and base temperature
 - Estimated days to 30%, 15%, and empty
+- Cumulative propane energy consumed in kWh for the Energy Dashboard
 - Configurable low-level problem state
 
 The estimates match the website's basic calculation and are unavailable when usage is zero, negative, or the tank is already below the target.
+
+The cumulative energy sensor begins at zero after upgrading to version 0.2.0. It counts decreases in reported inventory, ignores deliveries, filters small upward gauge fluctuations, and persists across Home Assistant restarts. Add it under **Settings → Dashboards → Energy → Gas consumption**. Existing tank history is not backfilled.
 
 ## Installation
 
@@ -34,7 +38,9 @@ Copy `custom_components/mytankapp` into your Home Assistant `config/custom_compo
 
 Enter the username and password used at `mytankapp.com`. The password is retained by Home Assistant because the website provides no refresh-token flow and the integration must log in again after restarts or expired sessions.
 
-The default poll interval is 30 minutes. Options allow 5–180 minutes and a 1–99% low-level threshold. Because this is a private, undocumented API with no published quota, the default interval is intentionally conservative.
+The default poll interval is 6 hours. Options allow 1–24 hours and a 1–99% low-level threshold. Existing installations are migrated to the six-hour interval when upgrading to version 0.5.0. Because this is a private, undocumented API with no published quota, the default interval is intentionally conservative.
+
+All failed automatic login responses use a 15-minute cooldown; calls made during the cooldown do not send another login request. This accommodates intermittent login failures from MyTankApp without rapidly retrying. Credentials submitted interactively in Home Assistant setup or reauthentication are still validated immediately, and an invalid response is shown to the user. Once automatic access recovers, normal six-hour polling resumes.
 
 ## Safety and limitations
 

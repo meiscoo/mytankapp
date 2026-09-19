@@ -12,7 +12,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import MyTankAppAuthError, MyTankAppClient, MyTankAppError
-from .const import PLATFORMS
+from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, PLATFORMS
 from .coordinator import MyTankAppCoordinator
 from .models import MyTankAppAccount
 
@@ -27,6 +27,17 @@ class MyTankAppRuntimeData:
 
 
 MyTankAppConfigEntry: TypeAlias = ConfigEntry[MyTankAppRuntimeData]
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: MyTankAppConfigEntry
+) -> bool:
+    """Migrate existing entries to six-hour polling."""
+    if entry.version == 1:
+        options = dict(entry.options)
+        options[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
+        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: MyTankAppConfigEntry) -> bool:

@@ -25,7 +25,7 @@ from .const import (
 class MyTankAppConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a MyTankApp config flow."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -100,7 +100,12 @@ class MyTankAppConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _async_validate(self, username: str, password: str) -> MyTankAppClient:
-        client = MyTankAppClient(async_get_clientsession(self.hass), username, password)
+        client = MyTankAppClient(
+            async_get_clientsession(self.hass),
+            username,
+            password,
+            retry_failed_login=False,
+        )
         await client.async_login()
         return client
 

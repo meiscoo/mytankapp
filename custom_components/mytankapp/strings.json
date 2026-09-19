@@ -31,7 +31,7 @@
     "step": {
       "init": {
         "title": "MyTankApp options",
-        "description": "Use conservative polling because MyTankApp does not publish API limits.",
+        "description": "Polling defaults to every 6 hours because MyTankApp does not publish API limits.",
         "data": {
           "scan_interval": "Polling interval (minutes)",
           "low_level": "Low-level threshold (%)"
@@ -47,6 +47,7 @@
       "capacity": { "name": "Capacity" },
       "average_daily_usage": { "name": "Average daily usage" },
       "last_reported": { "name": "Last reported" },
+      "last_successful_sync": { "name": "Last successful sync" },
       "temperature": { "name": "Temperature" },
       "base_temperature": { "name": "Base temperature" },
       "days_to_30": { "name": "Days to 30%" },

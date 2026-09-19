@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -13,7 +13,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.helpers.storage import Store
 
 from .api import MyTankAppAuthError, MyTankAppClient, MyTankAppError
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    LOGIN_RETRY_INTERVAL,
+)
 from .models import MyTankAppAccount, MyTankAppConsumption, MyTankAppTank
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,18 +36,23 @@ class MyTankAppCoordinator(DataUpdateCoordinator[dict[str, MyTankAppTank]]):
     ) -> None:
         self.client = client
         self.account = account
+        self.last_successful_sync: datetime | None = None
         self.consumption: dict[str, MyTankAppConsumption] = {}
         self._store: Store[dict[str, dict[str, Any]]] = Store(
             hass, 1, f"{DOMAIN}.{entry.entry_id}.consumption"
         )
-        interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        self._normal_update_interval = timedelta(
+            minutes=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+        )
         super().__init__(
             hass,
             _LOGGER,
             config_entry=entry,
             name=DOMAIN,
-            update_interval=timedelta(minutes=interval),
-            always_update=False,
+            update_interval=self._normal_update_interval,
+            # A successful sync timestamp must be published even when the tank
+            # payload is identical to the previous poll.
+            always_update=True,
         )
 
     async def async_load_consumption(self) -> None:
@@ -62,7 +72,10 @@ class MyTankAppCoordinator(DataUpdateCoordinator[dict[str, MyTankAppTank]]):
         except MyTankAppAuthError as err:
             raise ConfigEntryAuthFailed from err
         except MyTankAppError as err:
+            self.update_interval = timedelta(minutes=LOGIN_RETRY_INTERVAL)
             raise UpdateFailed(str(err)) from err
+
+        self.update_interval = self._normal_update_interval
 
         changed = False
         refresh_flow_for: list[str] = []
@@ -110,4 +123,5 @@ class MyTankAppCoordinator(DataUpdateCoordinator[dict[str, MyTankAppTank]]):
                     for device_id, consumption in self.consumption.items()
                 }
             )
+        self.last_successful_sync = datetime.now(timezone.utc)
         return tanks
