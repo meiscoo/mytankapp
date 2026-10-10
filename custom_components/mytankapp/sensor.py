@@ -247,6 +247,13 @@ class MyTankAppSensor(MyTankAppEntity, SensorEntity):
         tank = self.tank
         if tank is None:
             return None
+        if self.entity_description.key == "level":
+            return self.calibrated_level(tank)
+        if self.entity_description.key == "inventory":
+            return self.calibrated_inventory(tank)
+        if self.entity_description.key == "ullage":
+            return self.calibrated_ullage(tank)
+
         threshold = {
             "days_to_30": 30.0,
             "days_to_15": 15.0,
@@ -258,8 +265,21 @@ class MyTankAppSensor(MyTankAppEntity, SensorEntity):
                 consumption is not None
                 and consumption.rolling_usage_per_day is not None
             ):
-                derived = tank.days_until_with_volume_usage(
-                    threshold, consumption.rolling_usage_per_day
+                corrected_level = self.calibrated_level(tank)
+                if corrected_level is None or tank.tank_size is None:
+                    return None
+                corrected_inventory = (
+                    tank.tank_size * corrected_level / 100
+                )
+                target_inventory = tank.tank_size * threshold / 100
+                if corrected_inventory < target_inventory:
+                    return None
+                derived = int(
+                    (
+                        (corrected_inventory - target_inventory)
+                        / consumption.rolling_usage_per_day
+                    )
+                    + 0.5
                 )
                 if derived is not None:
                     return derived
