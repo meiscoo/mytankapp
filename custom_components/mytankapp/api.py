@@ -67,7 +67,7 @@ class MyTankAppClient:
     async def _async_login_locked(self) -> None:
         """Log in while holding the login lock."""
         retry_after = _LOGIN_RETRY_AFTER.get(self._username.casefold(), 0)
-        if retry_after > monotonic():
+        if self._retry_failed_login and retry_after > monotonic():
             raise MyTankAppConnectionError(
                 "Login is cooling down after a temporary failure"
             )
@@ -90,9 +90,8 @@ class MyTankAppClient:
             self._authentication_failed = True
             raise
         except MyTankAppConnectionError:
-            _LOGIN_RETRY_AFTER[self._username.casefold()] = (
-                monotonic() + LOGIN_RETRY_INTERVAL * 60
-            )
+            if self._retry_failed_login:
+                self._start_login_cooldown()
             raise
         _LOGIN_RETRY_AFTER.pop(self._username.casefold(), None)
         self._authorization = token
@@ -166,11 +165,6 @@ class MyTankAppClient:
             response.release()
             if not allow_session_renewal:
                 self._authorization = None
-                if self._retry_failed_login:
-                    self._start_login_cooldown()
-                    raise MyTankAppConnectionError(
-                        "Login was rejected; waiting before retry"
-                    )
                 self._authentication_failed = True
                 raise MyTankAppAuthError("Authorization was rejected")
             await self._async_renew_session(request_authorization)
@@ -218,10 +212,6 @@ class MyTankAppClient:
 
         if response.status in (400, 401, 403) and not authenticated:
             response.release()
-            if self._retry_failed_login:
-                raise MyTankAppConnectionError(
-                    "Login was rejected; waiting before retry"
-                )
             raise MyTankAppAuthError("Invalid username or password")
         if response.status >= 400 and response.status not in (401, 403):
             status = response.status
