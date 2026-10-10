@@ -41,7 +41,7 @@ Copy `custom_components/mytankapp` into your Home Assistant `config/custom_compo
 
 Enter the username and password used at `mytankapp.com`. The password is retained by Home Assistant because the website provides no refresh-token flow and the integration must log in again after restarts or expired sessions.
 
-The default poll interval is 12 hours. Options allow 1–24 hours and a 1–99% low-level threshold. Existing installations that still use the former six-hour default are migrated to 12 hours. Because this is a private, undocumented API with no published quota, the default interval is intentionally conservative.
+The default poll interval is 12 hours. Options allow 1–24 hours, a 1–99% low-level threshold, and a tank-level calibration offset. Enter a positive offset when MyTankApp reads high; for example, enter **10** to display a reported 60% reading as 50%. Existing installations that still use the former six-hour default are migrated to 12 hours. Because this is a private, undocumented API with no published quota, the default interval is intentionally conservative.
 
 Automatic login attempts use a 12-hour cooldown after transient connection failures. DNS failures, timeouts, rate limits, and 5xx responses do not trigger aggressive relogin attempts. Explicit 401/403 authorization rejection triggers Home Assistant reauthentication. Credentials submitted interactively in setup or reauthentication are still validated immediately.
 
@@ -51,6 +51,7 @@ Automatic login attempts use a 12-hour cooldown after transient connection failu
 - MyTankApp does not publish this API, so upstream changes can break the integration.
 - Tank reading cadence is controlled by the physical monitor and supplier; frequent polling will not make the transmitter report more often.
 - The integration reads MyTankApp's recent transaction history to calculate usage. Home Assistant Recorder stores the resulting sensor history locally.
+- Level calibration affects displayed level, inventory, ullage, low-level alerts, and depletion forecasts. It does not alter usage/consumption deltas or Energy statistics, so changing the offset cannot create a false consumption event.
 
 ## Support data
 
