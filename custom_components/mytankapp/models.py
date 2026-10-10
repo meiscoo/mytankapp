@@ -251,7 +251,9 @@ class MyTankAppConsumption:
         if newest.reported_at == self.flow_calculated_at:
             return False
 
-        elapsed_hours = (newest.reported_at - previous.reported_at).total_seconds() / 3600
+        elapsed_hours = (
+            newest.reported_at - previous.reported_at
+        ).total_seconds() / 3600
         consumed = previous.units - newest.units
         refill_threshold = self._refill_threshold(tank_size)
 
