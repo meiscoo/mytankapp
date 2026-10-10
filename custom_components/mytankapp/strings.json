@@ -31,7 +31,7 @@
     "step": {
       "init": {
         "title": "MyTankApp options",
-        "description": "Polling defaults to every 6 hours because MyTankApp does not publish API limits.",
+        "description": "Polling defaults to every 12 hours because MyTankApp does not publish API limits.",
         "data": {
           "scan_interval": "Polling interval (minutes)",
           "low_level": "Low-level threshold (%)"
@@ -45,7 +45,8 @@
       "inventory": { "name": "Inventory" },
       "ullage": { "name": "Ullage" },
       "capacity": { "name": "Capacity" },
-      "average_daily_usage": { "name": "Average daily usage" },
+      "average_daily_usage": { "name": "MyTankApp reported average daily usage" },
+      "propane_daily_usage": { "name": "Calculated daily usage" },
       "last_reported": { "name": "Last reported" },
       "last_successful_sync": { "name": "Last successful sync" },
       "temperature": { "name": "Temperature" },

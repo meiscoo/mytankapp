@@ -9,7 +9,8 @@ Each tank becomes a Home Assistant device with sensors for:
 - Level
 - Inventory and ullage
 - Capacity
-- Average daily usage
+- MyTankApp-reported average daily usage (diagnostic)
+- Calculated 7-day rolling daily usage from timestamped tank history
 - Last report time
 - Last successful integration sync time
 - Temperature and base temperature
@@ -18,7 +19,7 @@ Each tank becomes a Home Assistant device with sensors for:
 - Cumulative propane volume consumed in liters for the Energy Dashboard gas chart
 - Configurable low-level problem state
 
-The estimates match the website's basic calculation and are unavailable when usage is zero, negative, or the tank is already below the target.
+Days-to-threshold estimates prefer the calculated rolling usage rate when history is available, and fall back to MyTankApp's reported average when it is not. The calculated rate ignores deliveries and small upward gauge noise.
 
 The cumulative consumption sensors count decreases in reported inventory, ignore deliveries, filter small upward gauge fluctuations, and persist across Home Assistant restarts. Add **Propane consumed** under **Settings → Dashboards → Energy → Gas consumption** for the gas chart. Keep **Propane energy consumed** on summary views where a kWh equivalent is useful. Existing tank history is not backfilled, but upgrades preserve the consumption accumulated by earlier versions.
 
@@ -39,16 +40,16 @@ Copy `custom_components/mytankapp` into your Home Assistant `config/custom_compo
 
 Enter the username and password used at `mytankapp.com`. The password is retained by Home Assistant because the website provides no refresh-token flow and the integration must log in again after restarts or expired sessions.
 
-The default poll interval is 6 hours. Options allow 1–24 hours and a 1–99% low-level threshold. Existing installations are migrated to the six-hour interval when upgrading to version 0.5.0. Because this is a private, undocumented API with no published quota, the default interval is intentionally conservative.
+The default poll interval is 12 hours. Options allow 1–24 hours and a 1–99% low-level threshold. Existing installations that still use the former six-hour default are migrated to 12 hours. Because this is a private, undocumented API with no published quota, the default interval is intentionally conservative.
 
-All failed automatic login responses use a 15-minute cooldown; calls made during the cooldown do not send another login request. This accommodates intermittent login failures from MyTankApp without rapidly retrying. Credentials submitted interactively in Home Assistant setup or reauthentication are still validated immediately, and an invalid response is shown to the user. Once automatic access recovers, normal six-hour polling resumes.
+Automatic login attempts use a 12-hour cooldown after transient connection failures. DNS failures, timeouts, rate limits, and 5xx responses do not trigger aggressive relogin attempts. Explicit 401/403 authorization rejection triggers Home Assistant reauthentication. Credentials submitted interactively in setup or reauthentication are still validated immediately.
 
 ## Safety and limitations
 
 - The integration does not order fuel, request service, modify alerts, or change account data.
 - MyTankApp does not publish this API, so upstream changes can break the integration.
 - Tank reading cadence is controlled by the physical monitor and supplier; frequent polling will not make the transmitter report more often.
-- Historical graph endpoints are intentionally omitted. Home Assistant Recorder stores the sensor history locally.
+- The integration reads MyTankApp's recent transaction history to calculate usage. Home Assistant Recorder stores the resulting sensor history locally.
 
 ## Support data
 

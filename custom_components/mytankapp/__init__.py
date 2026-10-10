@@ -32,11 +32,14 @@ MyTankAppConfigEntry: TypeAlias = ConfigEntry[MyTankAppRuntimeData]
 async def async_migrate_entry(
     hass: HomeAssistant, entry: MyTankAppConfigEntry
 ) -> bool:
-    """Migrate existing entries to six-hour polling."""
-    if entry.version == 1:
+    """Migrate existing entries to the current polling default."""
+    if entry.version < 3:
         options = dict(entry.options)
-        options[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
-        hass.config_entries.async_update_entry(entry, options=options, version=2)
+        # Preserve a deliberately customized interval. Older versions either had
+        # no stored interval or used the former six-hour default (360 minutes).
+        if options.get(CONF_SCAN_INTERVAL, 360) == 360:
+            options[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
+        hass.config_entries.async_update_entry(entry, options=options, version=3)
     return True
 
 
