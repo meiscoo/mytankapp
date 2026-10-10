@@ -17,11 +17,12 @@ Each tank becomes a Home Assistant device with sensors for:
 - Estimated days to 30%, 15%, and empty
 - Cumulative propane energy consumed in kWh for the Energy Dashboard
 - Cumulative propane volume consumed in liters for the Energy Dashboard gas chart
+- Timestamped propane-consumption statistics imported from MyTankApp history for accurate Energy Dashboard day placement
 - Configurable low-level problem state
 
 Days-to-threshold estimates prefer the calculated rolling usage rate when history is available, and fall back to MyTankApp's reported average when it is not. The calculated rate ignores deliveries and small upward gauge noise.
 
-The cumulative consumption sensors count decreases in reported inventory, ignore deliveries, filter small upward gauge fluctuations, and persist across Home Assistant restarts. Add **Propane consumed** under **Settings → Dashboards → Energy → Gas consumption** for the gas chart. Keep **Propane energy consumed** on summary views where a kWh equivalent is useful. Existing tank history is not backfilled, but upgrades preserve the consumption accumulated by earlier versions.
+The cumulative consumption sensors count decreases in reported inventory, ignore deliveries, filter small upward gauge fluctuations, and persist across Home Assistant restarts. Version 0.8.1 also imports MyTankApp's recent timestamped history as a Home Assistant external statistic so the Energy dashboard can place usage on the dates it actually occurred. For the most accurate historical gas chart, select the statistic named **<tank name> propane consumption** under **Settings → Dashboards → Energy → Gas consumption**. The older **Propane consumed** sensor remains available for compatibility.
 
 ## Installation
 
