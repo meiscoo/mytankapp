@@ -260,29 +260,36 @@ class MyTankAppSensor(MyTankAppEntity, SensorEntity):
             "days_to_empty": 0.0,
         }.get(self.entity_description.key)
         if threshold is not None:
+            corrected_level = self.calibrated_level(tank)
+            if corrected_level is None or corrected_level < threshold:
+                return None
+
             consumption = self.coordinator.consumption.get(self._device_id)
             if (
                 consumption is not None
                 and consumption.rolling_usage_per_day is not None
+                and tank.tank_size is not None
+                and tank.tank_size > 0
             ):
-                corrected_level = self.calibrated_level(tank)
-                if corrected_level is None or tank.tank_size is None:
-                    return None
-                corrected_inventory = (
-                    tank.tank_size * corrected_level / 100
-                )
+                corrected_inventory = tank.tank_size * corrected_level / 100
                 target_inventory = tank.tank_size * threshold / 100
-                if corrected_inventory < target_inventory:
-                    return None
-                derived = int(
+                return int(
                     (
                         (corrected_inventory - target_inventory)
                         / consumption.rolling_usage_per_day
                     )
                     + 0.5
                 )
-                if derived is not None:
-                    return derived
+
+            if (
+                tank.average_daily_usage is not None
+                and tank.average_daily_usage > 0
+            ):
+                return int(
+                    ((corrected_level - threshold) / tank.average_daily_usage)
+                    + 0.5
+                )
+            return None
 
         if (
             self.entity_description.key == "average_daily_usage"
