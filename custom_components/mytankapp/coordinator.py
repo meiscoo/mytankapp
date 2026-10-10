@@ -85,7 +85,8 @@ class MyTankAppCoordinator(DataUpdateCoordinator[dict[str, MyTankAppTank]]):
                 device_id, MyTankAppConsumption()
             )
             if (
-                consumption.flow_rate_per_hour is None
+                not consumption.statistics_initialized
+                or consumption.flow_rate_per_hour is None
                 or consumption.usage_calculated_at is None
                 or (
                     tank.last_reported is not None
