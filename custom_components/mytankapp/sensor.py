@@ -74,6 +74,7 @@ SENSORS: tuple[MyTankAppSensorDescription, ...] = (
         key="average_daily_usage",
         translation_key="average_daily_usage",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         suggested_display_precision=1,
         value_fn=lambda tank, account: (
             None
@@ -160,6 +161,13 @@ FLOW_RATE_DESCRIPTION = SensorEntityDescription(
     suggested_display_precision=2,
 )
 
+DAILY_USAGE_DESCRIPTION = SensorEntityDescription(
+    key="propane_daily_usage",
+    translation_key="propane_daily_usage",
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=2,
+)
+
 LAST_SUCCESSFUL_SYNC_DESCRIPTION = SensorEntityDescription(
     key="last_successful_sync",
     translation_key="last_successful_sync",
@@ -203,6 +211,11 @@ async def async_setup_entry(
             if coordinator.data[device_id].is_propane
         )
         entities.extend(
+            MyTankAppCalculatedDailyUsageSensor(entry, device_id)
+            for device_id in new_device_ids
+            if coordinator.data[device_id].is_propane
+        )
+        entities.extend(
             MyTankAppLastSuccessfulSyncSensor(entry, device_id)
             for device_id in new_device_ids
         )
@@ -234,6 +247,23 @@ class MyTankAppSensor(MyTankAppEntity, SensorEntity):
         tank = self.tank
         if tank is None:
             return None
+        threshold = {
+            "days_to_30": 30.0,
+            "days_to_15": 15.0,
+            "days_to_empty": 0.0,
+        }.get(self.entity_description.key)
+        if threshold is not None:
+            consumption = self.coordinator.consumption.get(self._device_id)
+            if (
+                consumption is not None
+                and consumption.rolling_usage_per_day is not None
+            ):
+                derived = tank.days_until_with_volume_usage(
+                    threshold, consumption.rolling_usage_per_day
+                )
+                if derived is not None:
+                    return derived
+
         if (
             self.entity_description.key == "average_daily_usage"
             and self._account.average_usage_is_volume
@@ -332,3 +362,46 @@ class MyTankAppPropaneFlowRateSensor(MyTankAppEntity, SensorEntity):
             if self._account.uses_liters
             else UnitOfVolumeFlowRate.GALLONS_PER_HOUR
         )
+
+
+class MyTankAppCalculatedDailyUsageSensor(MyTankAppEntity, SensorEntity):
+    """Rolling propane usage calculated from timestamped tank history."""
+
+    entity_description = DAILY_USAGE_DESCRIPTION
+
+    def __init__(self, entry: MyTankAppConfigEntry, device_id: str) -> None:
+        super().__init__(entry, device_id, self.entity_description.key)
+        self._account = entry.runtime_data.account
+
+    @property
+    def native_value(self) -> float | None:
+        """Return rolling average daily propane use."""
+        consumption = self.coordinator.consumption.get(self._device_id)
+        if consumption is None or consumption.rolling_usage_per_day is None:
+            return None
+        return round(consumption.rolling_usage_per_day, 3)
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        """Return the account-aware daily volume unit."""
+        volume = "L" if self._account.uses_liters else "gal"
+        return f"{volume}/d"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the effective history window used for the calculation."""
+        consumption = self.coordinator.consumption.get(self._device_id)
+        if consumption is None:
+            return {}
+        return {
+            "window_days": (
+                round(consumption.usage_window_days, 2)
+                if consumption.usage_window_days is not None
+                else None
+            ),
+            "calculated_at": (
+                consumption.usage_calculated_at.isoformat()
+                if consumption.usage_calculated_at is not None
+                else None
+            ),
+        }
