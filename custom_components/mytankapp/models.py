@@ -195,6 +195,10 @@ class MyTankAppConsumption:
     rolling_usage_per_day: float | None = None
     usage_calculated_at: datetime | None = None
     usage_window_days: float | None = None
+    statistics_initialized: bool = False
+    statistics_total_liters: float = 0.0
+    statistics_last_inventory: float | None = None
+    statistics_last_reported: datetime | None = None
 
     @staticmethod
     def _refill_threshold(tank_size: float | None) -> float:
@@ -363,6 +367,69 @@ class MyTankAppConsumption:
         self.usage_calculated_at = newest.reported_at
         return True
 
+    def build_external_statistics(
+        self,
+        readings: list[MyTankAppReading],
+        *,
+        tank_size: float | None,
+        uses_liters: bool,
+    ) -> list[dict[str, Any]]:
+        """Build cumulative liters at the original reading timestamps.
+
+        The first available history point is a zero baseline. Later calls only
+        append readings newer than the persisted statistics cursor.
+        """
+        if not readings:
+            return []
+
+        ordered = sorted(readings, key=lambda reading: reading.reported_at)
+        statistics_by_hour: dict[datetime, float] = {}
+
+        if not self.statistics_initialized:
+            first = ordered[0]
+            self.statistics_initialized = True
+            self.statistics_total_liters = 0.0
+            self.statistics_last_inventory = first.units
+            self.statistics_last_reported = first.reported_at
+            start = first.reported_at.replace(minute=0, second=0, microsecond=0)
+            statistics_by_hour[start] = 0.0
+
+        refill_threshold = self._refill_threshold(tank_size)
+        for reading in ordered:
+            if (
+                self.statistics_last_reported is not None
+                and reading.reported_at <= self.statistics_last_reported
+            ):
+                continue
+
+            previous = self.statistics_last_inventory
+            current = reading.units
+            if previous is None:
+                self.statistics_last_inventory = current
+            else:
+                increase = current - previous
+                if increase >= refill_threshold:
+                    # Delivery/refill: reset the baseline without adding usage.
+                    self.statistics_last_inventory = current
+                elif current < previous:
+                    consumed = previous - current
+                    liters = consumed if uses_liters else consumed * LITERS_PER_GALLON
+                    self.statistics_total_liters += liters
+                    self.statistics_last_inventory = current
+                # Small increases are treated as gauge/temperature noise. Keep
+                # the lower baseline so that noise is not later counted as use.
+
+            self.statistics_last_reported = reading.reported_at
+            start = reading.reported_at.replace(minute=0, second=0, microsecond=0)
+            # If multiple reports land in one hour, keep the latest cumulative
+            # value for that hourly statistics bucket.
+            statistics_by_hour[start] = self.statistics_total_liters
+
+        return [
+            {"start": start, "sum": round(total, 6)}
+            for start, total in sorted(statistics_by_hour.items())
+        ]
+
     def as_dict(self) -> dict[str, Any]:
         """Serialize state for Home Assistant storage."""
         return {
@@ -385,6 +452,14 @@ class MyTankAppConsumption:
                 else None
             ),
             "usage_window_days": self.usage_window_days,
+            "statistics_initialized": self.statistics_initialized,
+            "statistics_total_liters": self.statistics_total_liters,
+            "statistics_last_inventory": self.statistics_last_inventory,
+            "statistics_last_reported": (
+                self.statistics_last_reported.isoformat()
+                if self.statistics_last_reported
+                else None
+            ),
         }
 
     @classmethod
@@ -407,4 +482,8 @@ class MyTankAppConsumption:
             rolling_usage_per_day=_float(data.get("rolling_usage_per_day")),
             usage_calculated_at=_datetime(data.get("usage_calculated_at")),
             usage_window_days=_float(data.get("usage_window_days")),
+            statistics_initialized=bool(data.get("statistics_initialized", False)),
+            statistics_total_liters=_float(data.get("statistics_total_liters")) or 0.0,
+            statistics_last_inventory=_float(data.get("statistics_last_inventory")),
+            statistics_last_reported=_datetime(data.get("statistics_last_reported")),
         )
