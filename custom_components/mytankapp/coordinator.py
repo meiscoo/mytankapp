@@ -6,11 +6,16 @@ from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
+from homeassistant.components.recorder.models import StatisticMeanType, StatisticMetaData
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.helpers.storage import Store
+from homeassistant.util import slugify
+from homeassistant.util.unit_conversion import VolumeConverter
 
 from .api import MyTankAppAuthError, MyTankAppClient, MyTankAppError
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
@@ -117,6 +122,28 @@ class MyTankAppCoordinator(DataUpdateCoordinator[dict[str, MyTankAppTank]]):
                 changed |= consumption.update_rolling_usage(
                     readings, tank_size=tank.tank_size
                 )
+
+                statistics = consumption.build_external_statistics(
+                    readings,
+                    tank_size=tank.tank_size,
+                    uses_liters=self.account.uses_liters,
+                )
+                if statistics:
+                    metadata: StatisticMetaData = {
+                        "source": DOMAIN,
+                        "name": f"{tank.display_name} propane consumption",
+                        "statistic_id": (
+                            f"{DOMAIN}:{slugify(device_id)}_propane_consumption"
+                        ),
+                        "unit_class": VolumeConverter.UNIT_CLASS,
+                        "unit_of_measurement": UnitOfVolume.LITERS,
+                        "mean_type": StatisticMeanType.NONE,
+                        "has_sum": True,
+                    }
+                    async_add_external_statistics(
+                        self.hass, metadata, statistics
+                    )
+                    changed = True
 
         # Apply the current device-list inventory after history as a fallback
         # when the transaction endpoint is unavailable or lags behind.
