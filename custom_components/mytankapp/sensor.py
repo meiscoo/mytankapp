@@ -265,9 +265,12 @@ class MyTankAppSensor(MyTankAppEntity, SensorEntity):
                 return None
 
             consumption = self.coordinator.consumption.get(self._device_id)
+            # A week with no measurable drop leaves the rolling rate at 0; fall
+            # back to the vendor's long-run average instead of dividing by it.
             if (
                 consumption is not None
                 and consumption.rolling_usage_per_day is not None
+                and consumption.rolling_usage_per_day > 0
                 and tank.tank_size is not None
                 and tank.tank_size > 0
             ):
